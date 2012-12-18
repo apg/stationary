@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from stationary.config import read_config, parser
@@ -7,9 +8,12 @@ def main():
     """Do the right thing.
     """
     tasks = []
-    config = read_config()
-
     options, args = parser.parse_args()
+    config = read_config(options.config)
+
+    level = logging.INFO
+    if options.debug:
+        level = logging.DEBUG
 
     for i, arg in enumerate(args):
         if arg.startswith('-'):
@@ -23,6 +27,12 @@ def main():
             raise SystemExit()
         elif arg in TASKS:
             tasks.append(TASKS[arg])
-    
-    for task in sorted(tasks, key=lambda x: x['priority']):
-        task['command'](config)
+
+    logging.basicConfig(format='%(levelname)s: %(msg)s', 
+                        level=level)
+
+    if not tasks:
+        TASKS['help']['command'](config)
+    else:
+        for task in sorted(tasks, key=lambda x: x['priority']):
+            task['command'](config)

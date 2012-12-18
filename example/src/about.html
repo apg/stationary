@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block site_content %}
+   <h1>About our Developers</h1>
+   <ol>
+   {% for dev in developers %}
+   <li>{{ dev }}</li>
+   {% endfor %}
+   </ol>
+{% endblock %}

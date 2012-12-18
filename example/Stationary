@@ -1,0 +1,8 @@
+[stationary]
+base_context_filename = _global.json
+build_directory = build
+data_directory = data
+layout_directory = layout
+layout = b
+src_directory = src
+template_language = jinja2
