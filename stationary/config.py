@@ -6,6 +6,8 @@ from ConfigParser import SafeConfigParser as ConfigParser
 from ConfigParser import NoOptionError
 from optparse import OptionParser
 
+from jinja2 import Environment, FileSystemLoader
+
 from utils import reroot
 
 pathjoin = os.path.join
@@ -47,6 +49,7 @@ class Config(object):
 
     def __init__(self, properties=None):
         self._properties = properties or DEFAULT_PROPERTIES.copy()
+        self._template_env = None
 
     def __getattribute__(self, attr):
         try:
@@ -67,6 +70,15 @@ class Config(object):
                 logging.warning("base context '%s' exists, "
                                 "but is not readable.", base_file)
         return {}
+
+    @property
+    def template_env(self):
+        if not self._template_env:
+            loader = FileSystemLoader([pathjoin(self.layout_directory,
+                                                self.layout),
+                                       self.src_directory])
+            self._template_env = Environment(loader=loader)
+        return self._template_env
 
     def read_context(self, src_file):
         """Read the context for source file `src_file`

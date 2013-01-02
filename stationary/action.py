@@ -4,6 +4,10 @@ import logging
 import os
 import re
 import urlparse
+import time
+import traceback
+import sys
+import BaseHTTPServer
 
 from functools import wraps
 from xml.sax.saxutils import escape as xmlescape
@@ -17,6 +21,8 @@ abspath = os.path.abspath
 pathjoin = os.path.join
 
 TASKS = {}
+BIND_HOST = 'localhost'
+BIND_PORT = 1432
 
 def task(priority=100):
     """Registers task
@@ -37,24 +43,82 @@ def task(priority=100):
         return _inner
     return decorator
 
+def build_file(config, src_file, base_ctx):
+    src_dir = os.path.abspath(config.src_directory)
+    build_dir = os.path.abspath(config.build_directory)
+    data_ctx = config.read_context(src_file.replace('.html', '.json'))
+    base_ctx.update(data_ctx)
+
+    dest_file = reroot(src_file,
+                       srcdir=src_dir,
+                       destdir=build_dir)
+
+    dest_dir = os.path.dirname(dest_file)
+
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+
+    logging.info("Rendering file: %s to %s" % (src_file, dest_file))
+    render(env=config.template_env, 
+           src=src_file[len(src_dir):],
+           dest=dest_file,
+           context=base_ctx)
+
+def make_handler(config):
+    class BuildHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+
+        def do_HEAD(s):
+            s.send_response(200)
+            s.send_header("Content-type", "text/html")
+            s.end_headers()
+    
+        def do_GET(self):
+            """Build/cache and serve a page"""
+            src_dir = os.path.abspath(config.src_directory)
+            build_dir = os.path.abspath(config.build_directory)
+
+            try:
+                if self.path == '/':
+                    self.path = '/index.html'
+
+                base_ctx = config.base_context() or {}
+                src_file = pathjoin(src_dir, self.path[1:])
+                logging.info("abspath = %s, from %s and %s" % (src_file, src_dir, self.path))
+                if os.path.exists(src_file):
+                    build_file(config, src_file, base_ctx)
+                    dest_file = reroot(src_file,
+                                       srcdir=src_dir,
+                                       destdir=build_dir)
+
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html')
+                    self.end_headers()
+
+                    with open(dest_file) as f:
+                        self.wfile.write(f.read())
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.wfile.write("404 Not found")
+
+            except:
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                traceback.print_exc(file=self.wfile)
+                
+    return BuildHandler
+
 @task(priority=2)
 def build(config):
     """Rebuilds the site.
     """
     sanity_check(config)
 
-    fsloader = FileSystemLoader([pathjoin(config.layout_directory, 
-                                          config.layout),
-                                 config.src_directory])
-
-    tmplenv = Environment(loader=fsloader)
-
     # get a global context if exists
     global_ctx = config.base_context() or {}
 
     src_dir = os.path.abspath(config.src_directory)
-    build_dir = os.path.abspath(config.build_directory)
-    data_dir = os.path.abspath(config.data_directory)
 
     for root, dirs, files in os.walk(config.src_directory):
         for f in files:
@@ -63,25 +127,25 @@ def build(config):
             root = abspath(root)
             src_file = os.path.join(root, f)
             base_ctx = global_ctx.copy()
-            data_ctx = config.read_context(src_file.replace('.html', 
-                                                            '.json'))
-            base_ctx.update(data_ctx)
+
+            build_file(config, src_file, base_ctx)
+
+@task(priority=1)
+def develop(config):
+    """Starts a webserver that rerenders and serves dynamically
+    generated pages
+    """
+    httpd = BaseHTTPServer.HTTPServer((BIND_HOST, BIND_PORT),
+                                      make_handler(config))
+    logging.info("Listening on http://%s:%d" % (BIND_HOST, BIND_PORT))
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
+    logging.info("Stopped listening on http://localhost:1432")
     
-            dest_file = reroot(pathjoin(root, f),
-                               srcdir=src_dir,
-                               destdir=build_dir)
-            
-            dest_dir = os.path.dirname(dest_file)
 
-            if not os.path.exists(dest_dir):
-                os.makedirs(dest_dir)
-
-            logging.info("Rendering file: %s to %s" % (src_file, dest_file))
-            render(env=tmplenv, 
-                   src=src_file[len(src_dir):],
-                   dest=dest_file,
-                   context=base_ctx)
-                   
 
 @task(priority=1)
 def clean(config):
