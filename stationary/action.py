@@ -64,6 +64,21 @@ def build_file(config, src_file, base_ctx):
            dest=dest_file,
            context=base_ctx)
 
+MIMES = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.css': 'text/css',
+    '.js': 'test/javascript'
+}
+
+def mimeof(path):
+    for ext, mime in MIMES.iteritems():
+        if path.endswith(ext):
+            return mime
+    return 'application/octet-stream'
+
 def make_handler(config):
     class BuildHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
@@ -78,6 +93,9 @@ def make_handler(config):
             build_dir = os.path.abspath(config.build_directory)
 
             try:
+                if self.path.startswith('/static/'):
+                    return self.do_GET_static()
+
                 if self.path == '/':
                     self.path = '/index.html'
 
@@ -106,7 +124,23 @@ def make_handler(config):
                 self.send_header('Content-Type', 'text/plain')
                 self.end_headers()
                 traceback.print_exc(file=self.wfile)
-                
+
+        # TODO: this is shitty, but temporary! (famous last words!)
+        def do_GET_static(self):
+            static_dir = os.path.abspath(config.static_directory)
+            path = pathjoin(static_dir, self.path.replace('/static/', ''))
+            if os.path.exists(path):
+                self.send_response(200)
+                self.send_header('Content-Type', mimeof(path))
+                self.end_headers()
+
+                with open(path) as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(404)
+                self.send_header('Content-Type', 'text/plain')
+                self.wfile.write("404 Not found")
+
     return BuildHandler
 
 @task(priority=2)

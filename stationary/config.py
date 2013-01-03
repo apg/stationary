@@ -20,6 +20,7 @@ DEFAULT_PROPERTIES = {
     'layout_directory': abspath('layout/'),
     'layout': 'default',
     'src_directory': abspath('src/'),
+    'static_directory': abspath('static/'),
     'template_language': 'jinja2',
 }
 
@@ -33,6 +34,7 @@ PROPERTY_CONVERTERS = {
     'layout_directory': make_absolute,
     'layout': str,
     'src_directory': make_absolute,
+    'static_directory': make_absolute,
     'template_language': str,
 }
 
@@ -109,15 +111,15 @@ class Config(object):
 
 
 def read_config(fname=None):
+    properties = DEFAULT_PROPERTIES.copy()
     cp = ConfigParser()
     absname = find_config(fname)
     if absname:
         cp.read(absname)
     else:
         logging.warning("Config file (%s) not found\n" % fname)
-        return Config(properties=DEFAULT_PROPERTIES.copy())
+        return Config(properties=properties)
 
-    properties = {}
     for section in cp.sections():
         options = cp.options(section)
         if section == 'stationary':
