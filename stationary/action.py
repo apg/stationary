@@ -1,7 +1,9 @@
 import datetime
 import json
 import logging
+import mimetypes
 import os
+import os.path as osp
 import re
 import urlparse
 import time
@@ -16,23 +18,22 @@ from xml.sax.saxutils import quoteattr as xmlquoteattr
 from jinja2 import Environment, FileSystemLoader
 
 from utils import reroot
+from build import build_file
 
-abspath = os.path.abspath
-pathjoin = os.path.join
 
 TASKS = {}
 BIND_HOST = 'localhost'
 BIND_PORT = 1432
 
+mimetypes.add_type('.coffee', 'text/x-coffeescript')
+mimetypes.add_type('.iced', 'text/x-iced-coffeescript')
+mimetypes.add_type('.less', 'text/css')
+
+
 def task(priority=100):
     """Registers task
     """
-    global TASKS
     def decorator(func):
-        @wraps(func)
-        def _inner(*args, **kwargs):
-            return func(*args, **kwargs)
-
         TASKS[func.__name__] = {
             'help': func.__doc__,
             'name': func.__name__,
@@ -40,44 +41,16 @@ def task(priority=100):
             'command': func
             }
 
-        return _inner
+        return func
     return decorator
 
-def build_file(config, src_file, base_ctx):
-    src_dir = os.path.abspath(config.src_directory)
-    build_dir = os.path.abspath(config.build_directory)
-    data_ctx = config.read_context(src_file.replace('.html', '.json'))
-    base_ctx.update(data_ctx)
-
-    dest_file = reroot(src_file,
-                       srcdir=src_dir,
-                       destdir=build_dir)
-
-    dest_dir = os.path.dirname(dest_file)
-
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
-
-    logging.info("Rendering file: %s to %s" % (src_file, dest_file))
-    render(env=config.template_env, 
-           src=src_file[len(src_dir):],
-           dest=dest_file,
-           context=base_ctx)
-
-MIMES = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.css': 'text/css',
-    '.js': 'test/javascript'
-}
 
 def mimeof(path):
-    for ext, mime in MIMES.iteritems():
-        if path.endswith(ext):
-            return mime
+    t, _ = mimetypes.guess_type(path)
+    if t:
+        return t
     return 'application/octet-stream'
+
 
 def make_handler(config):
     class BuildHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -89,80 +62,60 @@ def make_handler(config):
     
         def do_GET(self):
             """Build/cache and serve a page"""
-            src_dir = os.path.abspath(config.src_directory)
-            build_dir = os.path.abspath(config.build_directory)
+            src_dir = osp.abspath(config.src_directory)
+            build_dir = osp.abspath(config.build_directory)
 
             try:
-                if self.path.startswith('/static/'):
-                    return self.do_GET_static()
-
                 if self.path == '/':
                     self.path = '/index.html'
 
                 base_ctx = config.base_context() or {}
-                src_file = pathjoin(src_dir, self.path[1:])
-                logging.info("abspath = %s, from %s and %s" % (src_file, src_dir, self.path))
-                if os.path.exists(src_file):
-                    build_file(config, src_file, base_ctx)
-                    dest_file = reroot(src_file,
-                                       srcdir=src_dir,
-                                       destdir=build_dir)
+                src_file = osp.join(src_dir, self.path[1:])
 
+                dest_file = reroot(src_file,
+                                   srcdir=src_dir,
+                                   destdir=build_dir)
+
+                # don't even check if file exists, raise an error if it doesn't
+                try:
+                    dest_file = build_file(config, src_file, dest_file)
                     self.send_response(200)
-                    self.send_header('Content-Type', 'text/html')
+                    self.send_header('Content-Type', mimeof(dest_file))
                     self.end_headers()
 
                     with open(dest_file) as f:
                         self.wfile.write(f.read())
-                else:
+                except IOError:
                     self.send_response(404)
                     self.send_header('Content-Type', 'text/plain')
                     self.wfile.write("404 Not found")
-
             except:
                 self.send_response(500)
                 self.send_header('Content-Type', 'text/plain')
                 self.end_headers()
                 traceback.print_exc(file=self.wfile)
 
-        # TODO: this is shitty, but temporary! (famous last words!)
-        def do_GET_static(self):
-            static_dir = os.path.abspath(config.static_directory)
-            path = pathjoin(static_dir, self.path.replace('/static/', ''))
-            if os.path.exists(path):
-                self.send_response(200)
-                self.send_header('Content-Type', mimeof(path))
-                self.end_headers()
-
-                with open(path) as f:
-                    self.wfile.write(f.read())
-            else:
-                self.send_response(404)
-                self.send_header('Content-Type', 'text/plain')
-                self.wfile.write("404 Not found")
-
     return BuildHandler
 
-@task(priority=2)
+
+@task(priority=1)
 def build(config):
     """Rebuilds the site.
     """
     sanity_check(config)
 
-    # get a global context if exists
-    global_ctx = config.base_context() or {}
-
-    src_dir = os.path.abspath(config.src_directory)
+    src_dir = osp.abspath(config.src_directory)
+    build_dir = osp.abspath(config.build_directory)
 
     for root, dirs, files in os.walk(config.src_directory):
         for f in files:
-            if not f.endswith('.html'):
-                continue
-            root = abspath(root)
-            src_file = os.path.join(root, f)
-            base_ctx = global_ctx.copy()
+            root = osp.abspath(root)
+            src_file = osp.join(root, f)
+            dest_file = reroot(src_file,
+                               srcdir=src_dir,
+                               destdir=build_dir)
+            build_file(config, src_file, dest_file)
 
-            build_file(config, src_file, base_ctx)
 
 @task(priority=1)
 def develop(config):
@@ -178,27 +131,28 @@ def develop(config):
         pass
     httpd.server_close()
     logging.info("Stopped listening on http://localhost:1432")
-    
 
 
 @task(priority=1)
 def clean(config):
     """Deletes the contents of the build directory.
     """
+    rmdirs = []
     if not check_dir(config.build_directory, access=[os.W_OK, os.R_OK]):
         raise SystemExit()
-    
-    logging.debug("Cleaning up %s" % config.build_directory)
-    for root, dirs, files in os.walk(config.build_directory):
+
+    logging.info("Cleaning up %s" % osp.abspath(config.build_directory) + '/')
+    for root, dirs, files in os.walk(osp.abspath(config.build_directory) + '/'):
         for f in files:
-            fp = os.path.join(root, f)
+            fp = osp.join(root, f)
             logging.debug("Removing file %s" % fp)
             os.unlink(fp)
-        dirs.extend(os.path.join(root, d) for d in dirs)
+        rmdirs.extend(osp.join(root, d) for d in dirs)
 
-    for d in dirs:
-        logging.debug("Removing directory %s" % config.d)
+    for d in rmdirs:
+        logging.debug("Removing directory %s" % d)
         os.rmdir(d)
+
 
 @task(priority=0)
 def sanity_check(config):
@@ -216,6 +170,7 @@ def sanity_check(config):
         logging.warning("data directory (%s) is not readable or doesn't "
                         "exist! This might make things funky" % \
                         config.data_directory)
+
 
 @task(priority=-1)
 def help(config, *args):
@@ -237,19 +192,17 @@ def help(config, *args):
             print ' ', name
         print
 
+
 def check_dir(dir, exists=True, access=None, make=False):
-    if exists and not os.path.exists(dir):
+    if exists and not osp.exists(dir):
         if make:
             os.mkdir(dir, 0750)
-        return os.path.exists(dir)
+        return osp.exists(dir)
 
     if access and not all([os.access(dir, a) for a in access]):
         return False
 
     return True
 
-def render(env=None, src=None, dest=None, context=None):
-    tmpl = env.get_template(src)
-    with open(dest, 'w') as f:
-        f.write(tmpl.render(**context))
+
 

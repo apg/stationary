@@ -20,7 +20,6 @@ DEFAULT_PROPERTIES = {
     'layout_directory': abspath('layout/'),
     'layout': 'default',
     'src_directory': abspath('src/'),
-    'static_directory': abspath('static/'),
     'template_language': 'jinja2',
 }
 
@@ -34,7 +33,6 @@ PROPERTY_CONVERTERS = {
     'layout_directory': make_absolute,
     'layout': str,
     'src_directory': make_absolute,
-    'static_directory': make_absolute,
     'template_language': str,
 }
 
@@ -43,7 +41,6 @@ parser.add_option('-c', '--config', default=None, dest='config',
                   help="path to config file")
 parser.add_option('-d', '--debug', action='store_true', dest='debug',
                   help="turn on debug output")
-
 
 
 # TODO: should make this inherit from dict
