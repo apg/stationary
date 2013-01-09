@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 
 from ConfigParser import SafeConfigParser as ConfigParser
 from ConfigParser import NoOptionError
@@ -61,14 +62,15 @@ class Config(object):
     def base_context(self):
         base_file = pathjoin(self.data_directory,
                              self.base_context_filename)
-        if os.path.exists(base_file):
-            if os.access(base_file, os.R_OK):
-                with open(base_file) as o:
-                    return json.load(o)
-            else:
-                logging.warning("base context '%s' exists, "
-                                "but is not readable.", base_file)
-        return {}
+        return load_context_file(base_file)
+        # if os.path.exists(base_file):
+        #     if os.access(base_file, os.R_OK):
+        #         with open(base_file) as o:
+        #             return json.load(o)
+        #     else:
+        #         logging.warning("base context '%s' exists, "
+        #                         "but is not readable.", base_file)
+        # return {}
 
     @property
     def template_env(self):
@@ -90,21 +92,41 @@ class Config(object):
             data_file = reroot(src_file, 
                                srcdir=self.src_directory,
                                destdir=self.data_directory)
-            if os.path.exists(data_file):
-                if os.access(data_file, os.R_OK):
-                    with open(data_file) as o:
-                        return json.load(o)
-                else:
-                    logging.warning("data context '%s' exists, "
-                                    "but is not readable." % data_file)
-            else:
-                logging.debug("data context '%s' does not exist." % \
-                              data_file)
+            return load_context_file(data_file)
         except ValueError, e:
             logging.warning(str(e))
         except Exception, e:
             logging.error(str(e))
         return {}
+
+
+def load_context_file(path):
+    return find_and_read_context(path) or {}
+
+
+def find_and_read_context(path):
+    """Read a context file as a string, potentially with preprocessing
+    """
+    preprocessors = [
+        (None, None),
+        ('coffee %s', '.coffee'),
+        ('iced %s', '.iced')
+        ]
+    for cmd, suffix in preprocessors:
+        data_file = (path + suffix) if suffix else path
+        if os.path.exists(data_file):
+            if os.access(data_file, os.R_OK):
+                if cmd:
+                    output = subprocess.check_output(["coffee", data_file])
+                    return json.loads(output)
+                else:
+                    with open(data_file) as o:
+                        return json.load(o)
+            else:
+                logging.warning("data context '%s' exists, "
+                                "but is not readable." % data_file)
+                return None
+    logging.debug("data context does '%s' does not exist." % data_file)
 
 
 def read_config(fname=None):
