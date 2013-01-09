@@ -95,6 +95,27 @@ def build_js(config, src_file, dest_file):
     return build_static(config, src_file, dest_file)
 
 
+@register('.css')
+def build_css(config, src_file, dest_file):
+    """Attempts to build a css file, or .less to .css should the .css
+    be missing.
+
+    * If extension is .less, build_less to thing.css
+    * If extension is .css, this is just `build_static`
+
+    TODO: make this compile (iced-)coffee files, both files exist and the
+    js file is older than the coffee.
+    """
+    if not osp.exists(src_file):
+        base, _ = osp.splitext(src_file)
+        for ext, func in [('.less', build_less)]:
+            if osp.exists(base + ext):
+                dbase, _ = osp.splitext(dest_file)
+                return func(config, base + ext, dbase + '.css')
+
+    return build_static(config, src_file, dest_file)
+
+
 @register('.coffee')
 def build_coffee(config, src_file, dest_file):
     base, ext = osp.splitext(dest_file)
