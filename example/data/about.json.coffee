@@ -1,2 +1,2 @@
 console.log JSON.stringify
-  developers: ["Andrew Gwozdziewycz", "Matt Jacobs"]
+  developers: ["Andrew Gwozdziewycz", "*Matt Jacobs*"]

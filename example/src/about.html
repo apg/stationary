@@ -8,7 +8,7 @@
    <h1>About our Developers</h1>
    <ol>
    {% for dev in developers %}
-   <li>{{ dev }}</li>
+   <li>{{ dev|markdown }}</li>
    {% endfor %}
    </ol>
 {% endblock %}

@@ -3,6 +3,8 @@ import os
 import os.path as osp
 import subprocess
 
+from jinja2 import evalcontextfilter, Markup
+from markdown import markdown as convert_markdown
 from collections import defaultdict
 from utils import reroot
 
@@ -151,7 +153,15 @@ def build_less(config, src_file, dest_file):
     return dest_file
 
 
+@evalcontextfilter
+def markdown(ectx, text):
+    result = convert_markdown(text)
+    if ectx.autoescape:
+        result = Markup(result)
+    return result
+
 def render_jinja2(env=None, src=None, dest=None, context=None):
+    env.filters['markdown'] = markdown
     tmpl = env.get_template(src)
     with open(dest, 'w') as f:
         f.write(tmpl.render(**context))
