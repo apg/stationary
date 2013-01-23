@@ -16,7 +16,8 @@ abspath = os.path.abspath
 
 DEFAULT_PROPERTIES = {
     'base_context_filename': '_global.json',
-    'build_directory': abspath('build/'),
+    'build_directory': abspath('build/root/'),
+    'build_data_directory': abspath('build/data/'),
     'data_directory': abspath('data/'),
     'layout_directory': abspath('layout/'),
     'layout': 'default',
@@ -30,6 +31,7 @@ make_absolute = lambda x: abspath(str(x))
 PROPERTY_CONVERTERS = {
     'base_context_filename': str,
     'build_directory': make_absolute,
+    'build_data_directory': make_absolute,
     'data_directory': make_absolute,
     'layout_directory': make_absolute,
     'layout': str,
@@ -109,15 +111,15 @@ def find_and_read_context(path):
     """
     preprocessors = [
         (None, None),
-        ('coffee %s', '.coffee'),
-        ('iced %s', '.iced')
+        ('coffee', '.coffee'),
+        ('iced', '.iced')
         ]
     for cmd, suffix in preprocessors:
         data_file = (path + suffix) if suffix else path
         if os.path.exists(data_file):
             if os.access(data_file, os.R_OK):
                 if cmd:
-                    output = subprocess.check_output(["coffee", data_file])
+                    output = subprocess.check_output([cmd, data_file])
                     return json.loads(output)
                 else:
                     with open(data_file) as o:

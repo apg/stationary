@@ -18,7 +18,7 @@ from xml.sax.saxutils import quoteattr as xmlquoteattr
 from jinja2 import Environment, FileSystemLoader
 
 from utils import reroot
-from build import build_file
+from build import build_file, build_data
 
 
 TASKS = {}
@@ -97,7 +97,6 @@ def make_handler(config):
 
     return BuildHandler
 
-
 @task(priority=1)
 def build(config):
     """Rebuilds the site.
@@ -106,6 +105,7 @@ def build(config):
 
     src_dir = osp.abspath(config.src_directory)
     build_dir = osp.abspath(config.build_directory)
+    build_data_dir = osp.abspath(config.build_data_directory)
 
     for root, dirs, files in os.walk(config.src_directory):
         for f in files:
@@ -115,6 +115,19 @@ def build(config):
                                srcdir=src_dir,
                                destdir=build_dir)
             build_file(config, src_file, dest_file)
+
+            if f.endswith('.html'):
+                dest_data_file = reroot(src_file,
+                                        srcdir=src_dir,
+                                        destdir=build_data_dir)
+                build_data(config, src_file, dest_data_file)
+
+    # build global data
+    global_file = osp.join(config.data_directory, config.base_context_filename)
+    global_dest = reroot(global_file, 
+                         srcdir=config.data_directory,
+                         destdir=build_data_dir)
+    build_data(config, global_file, global_dest)
 
 
 @task(priority=1)
@@ -160,6 +173,11 @@ def sanity_check(config):
         logging.fatal("build directory (%s) is not writable! Aborting." % \
                       config.build_directory)
         raise SystemExit()
+
+    if not check_dir(config.build_data_directory, access=[os.W_OK], make=True):
+        logging.fatal("build data directory (%s) is not writable! Aborting." % \
+                      config.build_data_directory)
+        raise SystemExit()
     
     if not check_dir(config.src_directory, access=[os.R_OK]):
         logging.fatal("source directory (%s) is not readable or doesn't "
@@ -196,7 +214,7 @@ def help(config, *args):
 def check_dir(dir, exists=True, access=None, make=False):
     if exists and not osp.exists(dir):
         if make:
-            os.mkdir(dir, 0750)
+            os.makedirs(dir)
         return osp.exists(dir)
 
     if access and not all([os.access(dir, a) for a in access]):

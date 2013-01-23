@@ -10,6 +10,11 @@ from utils import reroot
 
 __BUILDERS = defaultdict(lambda: build_static)
 
+try:
+    import json
+except ImportError:
+    import simplejson as json
+
 
 def register(*exts):
     """Registers function as a builder, which will build passed in `src_file`
@@ -36,6 +41,24 @@ def build_file(config, src_file, dest_file):
     _, ext = osp.splitext(src_file)
     return __BUILDERS[ext](config, src_file, dest_file)
         
+
+def build_data(config, src_file, dest_file):
+    """Builds data file, by loading the data context and writing it
+    out to the data directory
+    """
+    src_file = src_file.replace('.html', '.json')
+    data_ctx = config.read_context(src_file)
+    dest_file = dest_file.replace('.html', '.json')
+    
+    dest_dir = osp.dirname(dest_file)
+
+    if not osp.exists(dest_dir):
+        os.makedirs(dest_dir)
+
+    logging.info("Rendering data file: %s to %s" % (src_file, dest_file))
+    with open(dest_file, 'w') as f:
+        json.dump(data_ctx, f)
+    return dest_file
 
 @register('.html')
 def build_html(config, src_file, dest_file):
